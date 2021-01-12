@@ -1,0 +1,5 @@
+---
+containerd_version: 1.4.3
+docker_version: 20.10.2
+helm_version: v3.5.0-rc.2
+docker_data_folder: /var/lib/docker

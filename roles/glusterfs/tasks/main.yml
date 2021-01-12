@@ -1,0 +1,68 @@
+---
+- name: Configure firewalld ports
+  firewalld:
+    service: glusterfs
+    permanent: yes
+    state: enabled
+
+- name: Reload firewalld
+  command: >
+    firewall-cmd --reload
+
+- name: Install oracle-gluster-release-el8
+  dnf: 
+    name: oracle-gluster-release-el8
+    state: present
+
+- name: Install glusterfs-server
+  dnf: 
+    name: glusterfs-server
+    state: present
+
+- name: Enable glusterd service
+  service:
+    name: glusterd.service
+    enabled: yes
+
+- name: Start service
+  service:
+    name: glusterd.service
+    state: started
+
+- name: Ensure Gluster brick and mount directories exist
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: 0775
+  with_items:
+    - "{{ gluster_brick_dir }}"
+    - "{{ gluster_mount_dir }}"
+
+- name: Probe nodes
+  shell: "gluster peer probe {{ hostvars[item]['ansible_facts'][ethernet_name]['ipv4']['address'] }}"  
+  with_items: 
+    - "{{ groups['glusterfs'] }}"
+  when: k8s_master is defined and k8s_master
+
+- name: Setup Replicated GlusterFS Storage Volume
+  shell:
+    gluster volume create {{ gluster_brick_name }} replica {{ groups['glusterfs'] | length }} transport tcp 
+    {% for host in groups['glusterfs'] %}
+      "{{ hostvars[host]['ansible_facts'][ethernet_name]['ipv4']['address'] }}:{{ gluster_brick_dir }} "
+    {% endfor %}
+    force
+  when: k8s_master is defined and k8s_master
+
+- name: Start the GlusterFS volume
+  shell: "gluster volume start {{ gluster_brick_name }}"
+  when: k8s_master is defined and k8s_master
+
+- name: Add fstab entry
+  shell: "echo 'localhost:/{{ gluster_brick_name }} {{ gluster_mount_dir }} glusterfs defaults,_netdev,backupvolfile-server=localhost 0 0' >> /etc/fstab"
+
+- name: Mount
+  shell: "mount.glusterfs localhost:/{{ gluster_brick_name }} {{ gluster_mount_dir }}"
+
+- name: Change owner
+  shell: "chown -R root:docker {{ gluster_mount_dir }}"
+  

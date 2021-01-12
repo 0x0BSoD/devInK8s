@@ -1,0 +1,33 @@
+---
+- hosts: 
+    - masters
+    - workers
+    - lbs
+  roles:
+    - common
+
+- hosts:
+    - masters
+    - workers
+  roles:
+    - dkr_kublet
+
+- hosts: lbs
+  roles:
+    - lb
+
+- hosts: masters
+  roles:
+    - master
+
+- hosts: workers
+  roles:
+    - worker
+
+- hosts: k8s-master-1
+  roles:
+    - metallb
+
+# - hosts: glusterfs
+#   roles:
+#     - glusterfs

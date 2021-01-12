@@ -1,0 +1,130 @@
+---
+- name: Add k8s repo
+  yum_repository:
+    name: Kubernetes
+    description: Kubernetes YUM repo
+    file: kubernetes
+    baseurl: https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
+    gpgkey:
+        - "https://packages.cloud.google.com/yum/doc/yum-key.gpg"
+        - "https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg"
+    enabled: yes
+
+- name: Add docker repo
+  yum_repository:
+    name: Docker
+    description: Docker YUM repo
+    file: docker
+    baseurl: https://download.docker.com/linux/centos/{{ ansible_facts['distribution_major_version'] }}/$basearch/stable
+    gpgkey: https://download.docker.com/linux/centos/gpg
+    enabled: yes
+
+- name: Install Docker and containerd
+  yum:
+    name:
+      - docker-ce-{{ docker_version }}
+      - containerd.io-{{ containerd_version }}
+    state: present
+
+- name: Install kubeadm and other packages
+  yum:
+    name: 
+      - wget 
+      - net-tools
+      - device-mapper-persistent-data 
+      - lvm2
+      - kubelet 
+      - kubeadm 
+      - kubectl
+    state: present
+
+- name: Create docker directories
+  file:
+    path: /etc/docker
+    state: directory
+    mode: '0755'
+
+- name: Create docker directories
+  file:
+    path: /etc/systemd/system/docker.service.d
+    state: directory
+    mode: '0755'
+
+- name: Copy daemon.json
+  template:
+    src: daemon.json.j2
+    dest: /etc/docker/daemon.json
+
+- name: Start and enable docker
+  service:
+    name: docker
+    enabled: yes
+    state: restarted
+
+- name: Add the br_netfilter module
+  modprobe:
+    name: br_netfilter
+    state: present
+
+- name: Add the overlay module
+  modprobe:
+    name: overlay
+    state: present
+
+- name: Disable IPv6 on {{ ansible_default_ipv4.interface }} interface
+  command: >
+    nmcli connection modify 'System {{ ansible_default_ipv4.interface }}' ipv6.method ignore
+
+- name: Check if iptables-legacy file exists
+  stat: 
+    path: /usr/sbin/iptables-legacy
+  register: iptables_legacy
+
+- name: Ensure iptables tooling does not use the nftables backend
+  command: >
+    update-alternatives --set iptables /usr/sbin/iptables-legacy
+  when: iptables_legacy.stat.exists == True
+
+- name: Copy cnt8-00-sysctl.conf to /etc/sysctl.d/00-sysctl.conf
+  copy:
+    src: sysctl.d/cnt8-00-sysctl.conf
+    dest: /etc/sysctl.d/00-sysctl.conf
+
+- name: Reladd sysctl variables
+  command: >
+    sysctl -p /etc/sysctl.d/00-sysctl.conf
+
+- name: Copy calico.conf
+  copy:
+    src: NetworkManager/conf.d/calico.conf
+    dest: /etc/NetworkManager/conf.d/calico.conf
+
+- name: Configure runtime cgroups used by kubelet
+  copy:
+    src: sysconfig/kubelet
+    dest: /etc/sysconfig/kubelet
+
+- name: Start and enable kublet
+  service:
+    name: kubelet
+    enabled: yes
+    state: restarted
+
+- name: Pull latest docker images used by kubeadm
+  command: >
+    kubeadm config images pull
+
+- name: Install openshift python package
+  pip:
+    name: openshift
+    state: present
+
+# - name: Get helm bin
+#   unarchive:
+#     src: "https://get.helm.sh/helm-{{ helm_version }}-linux-amd64.tar.gz"
+#     dest: /usr/local/bin/
+#     remote_src: yes
+
+# - name: Add helm stable repo
+#   shell: >
+#     helm repo add stable https://charts.helm.sh/stable

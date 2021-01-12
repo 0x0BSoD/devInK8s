@@ -1,0 +1,65 @@
+---
+- name: Set strictARP
+  shell: >
+      kubectl get configmap kube-proxy -n kube-system -o yaml |
+      sed -e "s/strictARP: false/strictARP: true/" | 
+      kubectl apply -f - -n kube-system
+
+- name: Get MetalLB namespace manifest
+  # delegate_to: localhost
+  get_url: 
+    url: "https://raw.githubusercontent.com/metallb/metallb/{{ metallb_version }}/manifests/namespace.yaml"
+    dest: /tmp/namespace.yaml
+  register: _download
+  until: _download is succeeded
+  retries: 5
+  delay: 2
+  check_mode: false
+
+- name: Get MetalLB app manifest
+  # delegate_to: localhost
+  get_url: 
+    url: "https://raw.githubusercontent.com/metallb/metallb/{{ metallb_version }}/manifests/metallb.yaml"
+    dest: /tmp/metallb.yaml
+  register: _download
+  until: _download is succeeded
+  retries: 5
+  delay: 2
+  check_mode: false
+
+- name: Create MetalLB namespace
+  community.kubernetes.k8s:
+    src: /tmp/namespace.yaml
+    state: present
+
+- name: Apply MetalLB manifest
+  community.kubernetes.k8s:
+    src: /tmp/metallb.yaml
+    state: present
+
+- name: Apply MetalLB configmap
+  community.kubernetes.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        namespace: metallb-system
+        name: config
+      data:
+        config: |
+          address-pools:
+          - name: default
+            protocol: layer2
+            addresses:
+            - {{ addresses }}
+
+- name: Check memberlist secret
+  shell: > 
+    kubectl get secrets -n metallb-system | grep memberlist | awk '{print $1}'
+  register: memberlist_check
+
+- name: Create memberlist secret
+  shell: >
+    kubectl create secret generic -n metallb-system memberlist --from-literal=secretkey="$(openssl rand -base64 128)"
+  when: memberlist_check.stdout != 'memberlist'
