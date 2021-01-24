@@ -6,7 +6,7 @@
       kubectl apply -f - -n kube-system
 
 - name: Get MetalLB namespace manifest
-  # delegate_to: localhost
+  delegate_to: localhost
   get_url: 
     url: "https://raw.githubusercontent.com/metallb/metallb/{{ metallb_version }}/manifests/namespace.yaml"
     dest: /tmp/namespace.yaml
@@ -17,7 +17,7 @@
   check_mode: false
 
 - name: Get MetalLB app manifest
-  # delegate_to: localhost
+  delegate_to: localhost
   get_url: 
     url: "https://raw.githubusercontent.com/metallb/metallb/{{ metallb_version }}/manifests/metallb.yaml"
     dest: /tmp/metallb.yaml
@@ -29,12 +29,12 @@
 
 - name: Create MetalLB namespace
   community.kubernetes.k8s:
-    src: /tmp/namespace.yaml
+    definition: "{{ lookup('file', '/tmp/namespace.yaml') }}"
     state: present
 
 - name: Apply MetalLB manifest
   community.kubernetes.k8s:
-    src: /tmp/metallb.yaml
+    definition: "{{ lookup('file', '/tmp/metallb.yaml') }}"
     state: present
 
 - name: Apply MetalLB configmap

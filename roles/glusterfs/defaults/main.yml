@@ -3,3 +3,10 @@ gluster_mount_dir: /mnt/gluster
 gluster_brick_dir: /srv/gluster/brick
 gluster_brick_name: gluster
 ethernet_name: "{{ ansible_default_ipv4.interface }}"
+
+heketi_vol_prefix: k8s-dev
+heketi_version: v10.2.0
+heketi_port: 8080
+heketi_zone: 1
+heketi_disks:
+  - /dev/sdc1

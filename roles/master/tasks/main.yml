@@ -61,7 +61,7 @@
       owner: root
 
   - name: Get calico manifest
-    # delegate_to: localhost
+    delegate_to: localhost
     get_url: 
       url: https://docs.projectcalico.org/manifests/calico.yaml
       dest: /tmp/calico.yaml
@@ -74,9 +74,8 @@
 
   - name: Apply calico manifest
     community.kubernetes.k8s:
-      src: /tmp/calico.yaml
+      definition: "{{ lookup('file', '/tmp/calico.yaml') }}"
       state: present
-      # wait: yes
     when: not p.stat.exists 
 
   - name: Regen cert
@@ -98,10 +97,10 @@
       --print-join-command
     register: add_master_to_cluster_cmd
 
-  - name: Get worker join command
-    command: >
-      kubeadm token create --print-join-command
-    register: add_worker_to_cluster_cmd
+  # - name: Get worker join command
+  #   command: >
+  #     kubeadm token create --print-join-command
+  #   register: add_worker_to_cluster_cmd
   when: k8s_master
 
 # ==================================
@@ -111,6 +110,7 @@
   block:
   - name: Join master backup
     command: "{{ hostvars[groups.masters[0]].add_master_to_cluster_cmd.stdout }}"
+    when: not p.stat.exists
 
   - name: Create .kube directory
     become: yes

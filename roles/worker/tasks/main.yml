@@ -18,5 +18,12 @@
   command: >
     firewall-cmd --reload
 
+- name: Get worker join command
+  delegate_to: "{{ groups.masters[0] }}"
+  command: >
+    kubeadm token create --print-join-command
+  register: add_worker_to_cluster_cmd
+  run_once: yes
+
 - name: Join worker node
-  command: "{{ hostvars[groups.masters[0]].add_worker_to_cluster_cmd.stdout }}"
+  command: "{{ add_worker_to_cluster_cmd.stdout }}"

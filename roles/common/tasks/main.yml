@@ -15,6 +15,7 @@
       - chrony
       - ntpstat
       - policycoreutils-python-utils
+      - iproute-tc
     state: present
 
 - name: Set NTP pool

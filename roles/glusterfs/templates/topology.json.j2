@@ -1,0 +1,26 @@
+{
+  "clusters": [
+    {
+      "nodes": [
+      {% for item in groups['glusterfs'] %}
+        {
+          "node": {
+            "hostnames": {
+              "manage": [
+                "{{ item }}"
+              ],
+              "storage": [
+                "{{ hostvars[item].ansible_default_ipv4.address }}"
+              ]
+            },
+            "zone": {{ heketi_zone }}
+          },
+          "devices": [
+            "{{ heketi_disks | list | join ("\",\"") }}"
+          ]
+        }{% if not loop.last %},{% endif %}
+    {% endfor %}
+      ]
+    }
+  ]
+}

@@ -1,14 +1,4 @@
 ---
-- name: Configure firewalld ports
-  firewalld:
-    service: glusterfs
-    permanent: yes
-    state: enabled
-
-- name: Reload firewalld
-  command: >
-    firewall-cmd --reload
-
 - name: Install oracle-gluster-release-el8
   dnf: 
     name: oracle-gluster-release-el8
@@ -19,24 +9,21 @@
     name: glusterfs-server
     state: present
 
-- name: Enable glusterd service
-  service:
-    name: glusterd.service
-    enabled: yes
-
 - name: Start service
   service:
     name: glusterd.service
+    enabled: yes
     state: started
 
-- name: Ensure Gluster brick and mount directories exist
-  file:
-    path: "{{ item }}"
-    state: directory
-    mode: 0775
-  with_items:
-    - "{{ gluster_brick_dir }}"
-    - "{{ gluster_mount_dir }}"
+- name: Configure firewalld ports
+  firewalld:
+    service: glusterfs
+    permanent: yes
+    state: enabled
+
+- name: Reload firewalld
+  command: >
+    firewall-cmd --reload
 
 - name: Probe nodes
   shell: "gluster peer probe {{ hostvars[item]['ansible_facts'][ethernet_name]['ipv4']['address'] }}"  
@@ -44,25 +31,187 @@
     - "{{ groups['glusterfs'] }}"
   when: k8s_master is defined and k8s_master
 
-- name: Setup Replicated GlusterFS Storage Volume
-  shell:
-    gluster volume create {{ gluster_brick_name }} replica {{ groups['glusterfs'] | length }} transport tcp 
-    {% for host in groups['glusterfs'] %}
-      "{{ hostvars[host]['ansible_facts'][ethernet_name]['ipv4']['address'] }}:{{ gluster_brick_dir }} "
-    {% endfor %}
-    force
+# ============== HEKETI =============================
+- name: Heketi setup
+  block:
+    - name: Get heketi binary
+      unarchive:
+        src: https://github.com/heketi/heketi/releases/download/{{ heketi_version }}/heketi-{{ heketi_version }}.linux.amd64.tar.gz
+        dest: /tmp
+        remote_src: yes
+    
+    - name: Get heketi-cli binary
+      unarchive:
+        src: https://github.com/heketi/heketi/releases/download/{{ heketi_version }}/heketi-client-{{ heketi_version }}.linux.amd64.tar.gz
+        dest: /tmp
+        remote_src: yes
+
+    - name: Add heketi group
+      group:
+        name: heketi
+        state: present
+
+    - name: Add heketi system user
+      user:
+        name: heketi
+        comment: heketi system user
+        shell: /sbin/nologin
+        system: yes
+        group: heketi
+        state: present
+
+    - name: Copy binaries to /usr/local/bin
+      copy:
+        src: "/tmp/heketi/{{ item }}"
+        dest: "/usr/local/bin/{{ item }}"
+        mode: u+rwx
+        owner: heketi
+        group: heketi
+        remote_src: yes
+      with_items:
+        - heketi
+        - heketi-cli
+
+    - name: Create heketi configurations and data paths
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: heketi
+        group: heketi
+      with_items:
+        - /var/lib/heketi 
+        - /etc/heketi 
+        - /var/log/heketi    
+
+    - name: Generate SSH key
+      openssh_keypair:
+        path: "/etc/heketi/heketi_key"
+        type: rsa
+        size: 4096
+        state: present
+        force: no
+        owner: heketi
+        group: heketi
+
+    
+    - name: Fetch pub key
+      fetch:
+        src: /etc/heketi/heketi_key.pub
+        dest: roles/glusterfs/files/heketi_key.pub
+        flat: yes
+
+    - name:
+      get_url: 
+        url: https://raw.githubusercontent.com/heketi/heketi/master/extras/systemd/heketi.env
+        dest: /etc/heketi/heketi.env 
+        owner: heketi
+        group: heketi
+   
+    - name: Copy heketi config
+      template:
+        src: heketi.json.j2
+        dest: /etc/heketi/heketi.json
+        owner: heketi
+        group: heketi
   when: k8s_master is defined and k8s_master
 
-- name: Start the GlusterFS volume
-  shell: "gluster volume start {{ gluster_brick_name }}"
-  when: k8s_master is defined and k8s_master
+- name: Set authorized key in alternate location
+  authorized_key:
+    user: root
+    state: present
+    key: "{{ lookup('file', 'heketi_key.pub') }}"
 
-- name: Add fstab entry
-  shell: "echo 'localhost:/{{ gluster_brick_name }} {{ gluster_mount_dir }} glusterfs defaults,_netdev,backupvolfile-server=localhost 0 0' >> /etc/fstab"
+- name: Continue with master only
+  block:
+    - name: Copy heketi.service
+      copy:
+        src:  heketi.service
+        dest: /etc/systemd/system/heketi.service
+    
+    - name: Start heketi service
+      systemd:
+        name: heketi
+        state: restarted
+        enabled: yes
+        daemon_reload: yes
 
-- name: Mount
-  shell: "mount.glusterfs localhost:/{{ gluster_brick_name }} {{ gluster_mount_dir }}"
+    - name: Copy heketi topology file
+      template:
+        src: topology.json.j2
+        dest: /etc/heketi/topology.json
+        owner: heketi
+        group: heketi
 
-- name: Change owner
-  shell: "chown -R root:docker {{ gluster_mount_dir }}"
+    - name: Load Heketi Topology file
+      shell: "heketi-cli topology load --user admin --secret {{ heketi_admin_api_key }} --json=/etc/heketi/topology.json"
+
+    - name: Add the Heketi access credentials to your ~/.bashrc file
+      lineinfile:
+        dest: /root/.bashrc
+        line: "{{ item }}"
+        state: present
+      with_items:
+        - "export HEKETI_CLI_SERVER=http://{{ groups['masters'][0] }}:8080"
+        - "export HEKETI_CLI_USER=admin"
+        - "export HEKETI_CLI_KEY='{{ heketi_admin_api_key }}'"
   
+    - name: Create Heketi secret
+      community.kubernetes.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: heketi-secret
+            namespace: default
+          type: "kubernetes.io/glusterfs"
+          data:
+            key: "{{ heketi_admin_api_key | b64encode }}"
+
+    - name: Get cluster ID
+      shell: >
+        heketi-cli cluster list | grep -Eo '^Id:.*' | cut -d: -f2 | cut -b -32
+      register: heketi_cluster_id
+
+    - name: Apply Heketi storage class
+      community.kubernetes.k8s:
+        state: present
+        definition:
+          apiVersion: storage.k8s.io/v1beta1
+          kind: StorageClass
+          metadata:
+            name: gluster-heketi
+          provisioner: kubernetes.io/glusterfs
+          reclaimPolicy: Delete
+          volumeBindingMode: Immediate
+          allowVolumeExpansion: true
+          parameters:
+            resturl: "http://{{ groups['masters'][0] }}:8080" 
+            restuser: "admin" 
+            secretName: "heketi-secret"
+            secretNamespace: "default"
+            volumetype: "replicate:3"
+            volumenameprefix: "{{ heketi_vol_prefix }}"
+            clusterid: "{{ heketi_cluster_id.stdout }}"
+            # TODO: check why if option enabled the pvc was can't created with the current config
+            # volumeoptions: "user.heketi.zone-checking strict"
+
+    - name: Create 5Gb pvc
+      community.kubernetes.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: gluster-pvc
+            namespace: default
+          annotations:
+            volume.beta.kubernetes.io/storage-class: gluster-heketi
+          spec:
+            storageClassName: gluster-heketi
+            accessModes:
+              - ReadWriteMany
+            resources:
+              requests:
+                storage: 5Gi         
+  when: k8s_master is defined and k8s_master

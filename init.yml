@@ -28,6 +28,6 @@
   roles:
     - metallb
 
-# - hosts: glusterfs
-#   roles:
-#     - glusterfs
+- hosts: glusterfs
+  roles:
+    - glusterfs

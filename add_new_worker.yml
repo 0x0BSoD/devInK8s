@@ -1,0 +1,12 @@
+---
+# run example: ansible-playbook -e 'node_name="k8s-node-2"' add_new_worker.yml
+# add new worker node
+# =====
+- hosts: 
+    - "{{ node_name }}"
+  roles:
+    - common
+    - dkr_kublet
+    - worker
+    - glusterfs
+# =====
