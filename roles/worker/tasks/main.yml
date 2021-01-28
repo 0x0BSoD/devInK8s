@@ -8,11 +8,19 @@
     permanent: yes
     state: enabled
   with_items:
+    # for BGP cni
     - 179/tcp
     - 10250/tcp
     - 10255/tcp
-    - 30000-32767/tcp
     - 6783/tcp
+    # NodePort range
+    # - 30000-32767/tcp
+    
+- name: Enable masquerading
+  firewalld:
+    masquerade: yes
+    state: enabled
+    permanent: true
 
 - name: Reload firewalld
   command: >

@@ -9,6 +9,7 @@
     permanent: yes
     state: enabled
   with_items:
+  # for BGP cni
     - 179/tcp
     - 6443/tcp
     - 2379-2380/tcp
@@ -16,6 +17,14 @@
     - 10251/tcp
     - 10252/tcp
     - 10255/tcp
+  # NodePort range
+    # - 30000-32767/tcp
+
+- name: Enable masquerading
+  firewalld:
+    masquerade: yes
+    state: enabled
+    permanent: yes
 
 - name: Reload firewalld
   command: >
@@ -37,6 +46,7 @@
       kubeadm init \
       --apiserver-bind-port {{ k8s_cp_port }} \
       --pod-network-cidr {{ k8s_net }} \
+      --service-cidr {{ k8s_srv_net }} \
       --control-plane-endpoint {{ k8s_cp_endpoint }} \
       --upload-certs \
       --ignore-preflight-errors=all
@@ -97,10 +107,6 @@
       --print-join-command
     register: add_master_to_cluster_cmd
 
-  # - name: Get worker join command
-  #   command: >
-  #     kubeadm token create --print-join-command
-  #   register: add_worker_to_cluster_cmd
   when: k8s_master
 
 # ==================================

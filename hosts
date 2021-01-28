@@ -1,16 +1,17 @@
 [masters]
-k8s-master-1 ansible_host=10.1.2.7  k8s_master=True
-k8s-master-2 ansible_host=10.1.2.10  k8s_master=False
-k8s-master-3 ansible_host=10.1.2.13  k8s_master=False
+k8s-master-1 ansible_host=10.1.1.201 k8s_master=True
+k8s-master-2 ansible_host=10.1.1.202 k8s_master=False
+k8s-master-3 ansible_host=10.1.1.203 k8s_master=False
 
 [lbs]
-k8s-lb-1 ansible_host=10.1.2.111 lb_priority=150 lb_status=MASTER
-k8s-lb-2 ansible_host=10.1.2.5 lb_priority=100 lb_status=BACKUP
+k8s-lb-1 ansible_host=10.1.1.101 lb_priority=150 lb_status=MASTER
+k8s-lb-2 ansible_host=10.1.1.102 lb_priority=100 lb_status=BACKUP
 
 [workers]
-k8s-node-1 ansible_host=10.1.2.15
-k8s-node-2 ansible_host=10.1.2.16
-k8s-node-3 ansible_host=10.1.2.17
+k8s-node-1 ansible_host=10.1.1.221
+k8s-node-2 ansible_host=10.1.1.222
+k8s-node-3 ansible_host=10.1.1.223
+k8s-node-4 ansible_host=10.1.1.224
 
 [glusterfs:children]
 masters
