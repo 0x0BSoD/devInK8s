@@ -1,0 +1,11 @@
+---
+# run example: ansible-playbook -e 'node_name="k8s-node-2"' add_new_master.yml
+# add new master node
+# =====
+- hosts: 
+    - "{{ node_name }}"
+  roles:
+    - common
+    - dkr_kublet
+    - master
+# =====

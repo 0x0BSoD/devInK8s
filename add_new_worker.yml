@@ -8,5 +8,4 @@
     - common
     - dkr_kublet
     - worker
-    - glusterfs
 # =====

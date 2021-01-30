@@ -1,5 +1,4 @@
 ---
-
 # ==================================
 # system config
 # ==================================
@@ -30,14 +29,14 @@
   command: >
     firewall-cmd --reload
 
-# ==================================
-# k8s init MASTER
-# ==================================
-
 - name: Check for admin.conf exists in /etc/kubernetes     
   stat: 
     path: /etc/kubernetes/admin.conf
   register: p
+
+# ==================================
+# k8s init MASTER
+# ==================================
 
 - name: Initialize main master
   block:
@@ -88,34 +87,36 @@
       state: present
     when: not p.stat.exists 
 
-  - name: Regen cert
-    command: >
-      kubeadm init phase upload-certs --upload-certs
-    register: upload_cert_out
-
   - name: Check master node status
     command: "kubectl get node {{ ansible_hostname }}"
     register: cmd_res
     retries: 5
     until: cmd_res.stdout.find("Ready") != -1
     when: not p.stat.exists 
-
-  - name: Get master join command
-    command: >
-      kubeadm token create 
-      --certificate-key {{ upload_cert_out.stdout_lines | last }} 
-      --print-join-command
-    register: add_master_to_cluster_cmd
-
   when: k8s_master
 
 # ==================================
 # k8s init MASTER-BACKUP
 # ==================================
+- name: Regen cert
+  delegate_to: "{{ groups.masters[0] }}"
+  command: >
+    kubeadm init phase upload-certs --upload-certs
+  run_once: yes
+  register: upload_cert_out
+
+- name: Get master join command
+  delegate_to: "{{ groups.masters[0] }}"
+  command: >
+    kubeadm token create 
+    --certificate-key {{ upload_cert_out.stdout_lines | last }} 
+    --print-join-command
+  register: add_master_to_cluster_cmd
+
 - name: Initialize master backup
   block:
   - name: Join master backup
-    command: "{{ hostvars[groups.masters[0]].add_master_to_cluster_cmd.stdout }}"
+    command: "{{ add_master_to_cluster_cmd.stdout }}"
     when: not p.stat.exists
 
   - name: Create .kube directory
